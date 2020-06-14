@@ -1,8 +1,8 @@
-from application import app, db
-from flask import render_template, request, json, Response, redirect, flash, url_for, session
+from application import app, db, api
+from flask import render_template, request, json, Response, redirect, flash, url_for, session, jsonify
 from application.models import User, Course, Enrollment
 from application.forms import LoginForm, RegisterForm
-
+from flask_restplus import Resource
 courseData = [
     {"courseID": "1111", "title": "PHP 111", "description": "Intro to PHP", "credits": "3", "term": "Fall, Spring"},
     {"courseID": "2222", "title": "Java 1", "description": "Intro to Java Programming", "credits": "4",
@@ -12,6 +12,37 @@ courseData = [
                        "term": "Fall, Spring"},
     {"courseID": "5555", "title": "Java 2", "description": "Advanced Java Programming", "credits": "4", "term": "Fall"}]
 
+#############################################
+
+@api.route('/api','/api/')
+class GetandPost(Resource):
+    #Get All
+    def get(self):
+        return jsonify(User.objects.all())
+
+    def post(self):
+        data = api.payload
+        user = User(user_id=data['user_id'], email=data['email'], first_name=data['first_name'], last_name=data['last_name'])
+        user.set_password(data['password'])
+        user.save()
+        return jsonify(User.objects(user_id=data['user_id']))
+
+@api.route('/api/<idx>')
+class UpdateandDelete(Resource):
+    #Get One
+    def get(self, idx):
+        return jsonify(User.objects(user_id=idx))
+
+    def put(self, idx):
+        data = api.payload
+        User.objects(user_id=idx).update(**data)
+        return jsonify(User.objects(user_id=idx))
+
+    def delete(self,idx):
+        User.objects(user_id=idx).delete()
+        return jsonify("User is deleted")
+
+#############################################
 
 @app.route("/")
 @app.route("/index")
@@ -22,6 +53,8 @@ def index():
 
 @app.route("/login", methods=['GET', 'POST'])
 def login():
+    if session.get('username'):
+        return redirect(url_for('index'))
     form = LoginForm()
     if form.validate_on_submit():
         email = form.email.data
@@ -29,7 +62,9 @@ def login():
 
         user = User.objects(email=email).first()
         if user and user.get_password(password):
-            flash(f"{user.first_name}, you are successfully logged in!", "success")
+            flash(f"{user.first_name}, you are successfully logged in!", "sucess")
+            session['user_id'] = user.user_id
+            session['username'] = user.first_name
             return redirect("/index")
         else:
             flash("Sorry, something went wrong.", "danger")
@@ -47,6 +82,8 @@ def courses(term=None):
 
 @app.route("/register", methods=['POST', 'GET'])
 def register():
+    if session.get('username'):
+        return redirect(url_for('index'))
     form = RegisterForm()
     if form.validate_on_submit():
         user_id = User.objects.count()
@@ -60,16 +97,18 @@ def register():
         user = User(user_id=user_id, email=email, first_name=first_name, last_name=last_name)
         user.set_password(password)
         user.save()
-        flash("You are successfully registered!", "success")
+        flash("You are successfully registered!", "sucess")
         return redirect(url_for('index'))
     return render_template("register.html", title="Register", form=form, register=True)
 
 
 @app.route("/enrollment", methods=["GET", "POST"])
 def enrollment():
+    if not session.get('username'):
+        return redirect(url_for('login'))
     courseID = request.form.get('courseID')
     courseTitle = request.form.get('title')
-    user_id = 2
+    user_id = session.get('user_id')
 
     if courseID:
         if Enrollment.objects(user_id=user_id, courseID=courseID):
@@ -120,15 +159,6 @@ def enrollment():
     return render_template("enrollment.html", enrollment=True, title="Enrollment", classes=classes)
 
 
-@app.route("/api/")
-@app.route("/api/<idx>")
-def api(idx=None):
-    if (idx == None):
-        jdata = courseData
-    else:
-        jdata = courseData[int(idx)]
-
-    return Response(json.dumps(jdata), mimetype="application/json")
 
 
 @app.route("/user")
@@ -136,3 +166,9 @@ def user():
     # User(user_id=1, first_name="Christian", last_name="Hur", email="christian@uta.com", password="abc1234").save()
     # User(user_id=2, first_name="Mary", last_name="Jane", email="mary.jane@uta.com", password="password123").save()
     users = User.objects.all()
+
+@app.route('/logout')
+def logout():
+    session['user_id'] = False
+    session.pop('username', None)
+    return redirect(url_for('index'))
