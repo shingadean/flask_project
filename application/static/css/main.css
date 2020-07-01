@@ -111,6 +111,7 @@ footer {
     cursor: pointer;
     width: 100%;
     opacity: 0.9;
+    font-weight: bold;
 }
 .btn-submit:hover {
     opacity: 1;
